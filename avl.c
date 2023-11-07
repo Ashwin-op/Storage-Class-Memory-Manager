@@ -174,82 +174,75 @@ int avl_insert(struct avl *avl, const char *item) {
     return 0;
 }
 
-struct node *find_min(struct node *node) {
-    struct node *temp = node->right;
-    while (temp && temp->left != NULL) {
-        temp = temp->left;
+static struct node *find_min(struct node *node) {
+    while (node->left) {
+        node = node->left;
     }
-    return temp;
+    return node;
 }
 
-struct node *delete(struct avl *avl, struct node *root, const char *item);
-
-void free_node(struct avl *avl, struct node *node) {
-    scm_free(avl->scm, (void *) node->item);
-    scm_free(avl->scm, node);
-}
-
-struct node *delete_leaf(struct avl *avl, struct node *root) {
-    free_node(avl, root);
-    --avl->state->items;
-    --avl->state->unique;
-    return NULL;
-}
-
-struct node *delete_one_child(struct avl *avl, struct node *root, struct node *child) {
-    free_node(avl, root);
-    --avl->state->items;
-    --avl->state->unique;
-    return child;
-}
-
-struct node *delete_two_children(struct avl *avl, struct node *root) {
-    struct node *temp = find_min(root);
-    free_node(avl, root);
-    if (!(root->item = scm_strdup(avl->scm, temp->item))) {
-        TRACE(0);
-        return NULL;
+static struct node *remove_min(struct node *node) {
+    if (!node->left) {
+        return node->right;
     }
-    root->right = delete(avl, root->right, temp->item);
-    return root;
+    node->left = remove_min(node->left);
+    if (1 < abs(balance(node))) {
+        if (0 < balance(node->right)) {
+            node = rotate_right_left(node);
+        } else {
+            node = rotate_left(node);
+        }
+    }
+    node->depth = depth(node->left, node->right);
+    return node;
 }
 
-struct node *delete(struct avl *avl, struct node *root, const char *item) {
+static struct node *remove_node(struct avl *avl, struct node *node, const char *item) {
     int d;
 
-    if (!root) {
-        return root;
+    if (!node) {
+        return NULL;
     }
-
-    if (!(d = strcmp(item, root->item))) {
-        if (root->count > 1) {
-            --root->count;
+    if (!(d = strcmp(item, node->item))) {
+        struct node *min;
+        if (1 < node->count) {
+            --node->count;
             --avl->state->items;
-            return root;
+            return node;
         }
-        if (!root->left && !root->right) {
-            return delete_leaf(avl, root);
-        } else if (!root->left || !root->right) {
-            return delete_one_child(avl, root, root->left ? root->left : root->right);
-        } else {
-            return delete_two_children(avl, root);
+        if (!node->left || !node->right) {
+            struct node *child = node->left ? node->left : node->right;
+            scm_free(avl->scm, (void *) node->item);
+            scm_free(avl->scm, node);
+            --avl->state->items;
+            --avl->state->unique;
+            return child;
         }
+        min = find_min(node->right);
+        if (!(node->item = scm_strdup(avl->scm, min->item))) {
+            TRACE(0);
+            return NULL;
+        }
+        node->count = min->count;
+        node->right = remove_min(node->right);
+        scm_free(avl->scm, (void *) min->item);
+        scm_free(avl->scm, min);
+        --avl->state->items;
+        --avl->state->unique;
     } else if (0 > d) {
-        root->left = delete(avl, root->left, item);
+        node->left = remove_node(avl, node->left, item);
     } else {
-        root->right = delete(avl, root->right, item);
+        node->right = remove_node(avl, node->right, item);
     }
-
-    if (1 < abs(balance(root))) {
-        if (0 > balance(root)) {
-            root = 0 <= balance(root->left) ? rotate_right(root) : rotate_left_right(root);
+    if (1 < abs(balance(node))) {
+        if (0 < balance(node->right)) {
+            node = rotate_right_left(node);
         } else {
-            root = 0 > balance(root->right) ? rotate_left(root) : rotate_right_left(root);
+            node = rotate_left(node);
         }
     }
-
-    root->depth = depth(root->left, root->right);
-    return root;
+    node->depth = depth(node->left, node->right);
+    return node;
 }
 
 int avl_remove(struct avl *avl, const char *item) {
@@ -261,7 +254,7 @@ int avl_remove(struct avl *avl, const char *item) {
         return -1;
     }
 
-    avl->state->root = delete(avl, avl->state->root, item);
+    avl->state->root = remove_node(avl, avl->state->root, item);
 
     return 0;
 }

@@ -241,8 +241,8 @@ void scm_free(struct scm *scm, void *p) {
 
     if (block_bit(addr) == 2) {
         set_block_bit(addr, 1);
-        memset(p, 0, block_size(addr));
         set_utilized(scm, addr, -1);
+        memset(p, 0, block_size(addr));
     } else {
         TRACE("double free");
     }
