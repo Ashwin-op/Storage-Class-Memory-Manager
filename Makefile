@@ -9,6 +9,7 @@
 
 CC     = gcc
 CFLAGS = -ansi -pedantic -Wall -Wextra -Werror -Wfatal-errors -fpic -O3
+DEBUG  = -g -DDEBUG
 LDLIBS =
 DEST   = cs238
 SRCS  := $(wildcard *.c)
@@ -17,6 +18,9 @@ OBJS  := $(SRCS:.c=.o)
 all: $(OBJS)
 	@echo "[LN]" $(DEST)
 	@$(CC) -o $(DEST) $(OBJS) $(LDLIBS)
+
+debug: CFLAGS := $(filter-out -O3,$(CFLAGS)) $(DEBUG)
+debug: all
 
 %.o: %.c
 	@echo "[CC]" $<
