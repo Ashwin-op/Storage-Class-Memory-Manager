@@ -30,6 +30,11 @@ static int insert(struct avl *avl, const char *s) {
 }
 
 static int remove_word(struct avl *avl, const char *s) {
+    if (!avl_exists(avl, s)) {
+        printf("'%s' does not exist\n", s);
+        return 0;
+    }
+
     if (avl_remove(avl, s)) {
         printf("error: failed to remove '%s'", s);
     }

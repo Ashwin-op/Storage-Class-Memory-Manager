@@ -169,23 +169,58 @@ int avl_insert(struct avl *avl, const char *item) {
         TRACE(0);
         return -1;
     }
+
     avl->state->root = root;
     return 0;
 }
 
-struct node *find_inorder_successor(struct node *node) {
-    struct node *current = node->right;
-    while (current && current->left != NULL) {
-        current = current->left;
+struct node *find_min(struct node *node) {
+    struct node *temp = node->right;
+    while (temp && temp->left != NULL) {
+        temp = temp->left;
     }
-    return current;
+    return temp;
+}
+
+struct node *delete(struct avl *avl, struct node *root, const char *item);
+
+void free_node(struct avl *avl, struct node *node) {
+    scm_free(avl->scm, (void *) node->item);
+    scm_free(avl->scm, node);
+}
+
+struct node *delete_leaf(struct avl *avl, struct node *root) {
+    free_node(avl, root);
+    --avl->state->items;
+    --avl->state->unique;
+    return NULL;
+}
+
+struct node *delete_one_child(struct avl *avl, struct node *root, struct node *child) {
+    free_node(avl, root);
+    --avl->state->items;
+    --avl->state->unique;
+    return child;
+}
+
+struct node *delete_two_children(struct avl *avl, struct node *root) {
+    struct node *temp = find_min(root);
+    free_node(avl, root);
+    if (!(root->item = scm_strdup(avl->scm, temp->item))) {
+        TRACE(0);
+        return NULL;
+    }
+    root->right = delete(avl, root->right, temp->item);
+    return root;
 }
 
 struct node *delete(struct avl *avl, struct node *root, const char *item) {
     int d;
+
     if (!root) {
         return root;
     }
+
     if (!(d = strcmp(item, root->item))) {
         if (root->count > 1) {
             --root->count;
@@ -193,51 +228,26 @@ struct node *delete(struct avl *avl, struct node *root, const char *item) {
             return root;
         }
         if (!root->left && !root->right) {
-            scm_free(avl->scm, (void *) root->item);
-            scm_free(avl->scm, root);
-            --avl->state->items;
-            --avl->state->unique;
-            return NULL;
-        } else if (!root->left) {
-            struct node *temp = root->right;
-            scm_free(avl->scm, (void *) root->item);
-            scm_free(avl->scm, root);
-            --avl->state->items;
-            --avl->state->unique;
-            return temp;
-        } else if (!root->right) {
-            struct node *temp = root->left;
-            scm_free(avl->scm, (void *) root->item);
-            scm_free(avl->scm, root);
-            --avl->state->items;
-            --avl->state->unique;
-            return temp;
+            return delete_leaf(avl, root);
+        } else if (!root->left || !root->right) {
+            return delete_one_child(avl, root, root->left ? root->left : root->right);
         } else {
-            struct node *temp = find_inorder_successor(root);
-            scm_free(avl->scm, (void *) root->item);
-            root->item = scm_strdup(avl->scm, temp->item);
-            root->right = delete(avl, root->right, temp->item);
+            return delete_two_children(avl, root);
         }
     } else if (0 > d) {
         root->left = delete(avl, root->left, item);
     } else {
         root->right = delete(avl, root->right, item);
     }
+
     if (1 < abs(balance(root))) {
         if (0 > balance(root)) {
-            if (0 <= balance(root->left)) {
-                root = rotate_right(root);
-            } else {
-                root = rotate_left_right(root);
-            }
+            root = 0 <= balance(root->left) ? rotate_right(root) : rotate_left_right(root);
         } else {
-            if (0 > balance(root->right)) {
-                root = rotate_left(root);
-            } else {
-                root = rotate_right_left(root);
-            }
+            root = 0 > balance(root->right) ? rotate_left(root) : rotate_right_left(root);
         }
     }
+
     root->depth = depth(root->left, root->right);
     return root;
 }
@@ -245,6 +255,11 @@ struct node *delete(struct avl *avl, struct node *root, const char *item) {
 int avl_remove(struct avl *avl, const char *item) {
     assert(avl);
     assert(safe_strlen(item));
+
+    if (!avl->state->root) {
+        TRACE("empty AVL");
+        return -1;
+    }
 
     avl->state->root = delete(avl, avl->state->root, item);
 

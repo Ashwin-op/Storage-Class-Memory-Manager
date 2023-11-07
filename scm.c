@@ -54,6 +54,7 @@ struct scm *file_size(const char *pathname) {
     assert(pathname);
 
     if (!(scm = malloc(sizeof(struct scm)))) {
+        TRACE("malloc failed");
         return NULL;
     }
     memset(scm, 0, sizeof(struct scm));
@@ -67,12 +68,14 @@ struct scm *file_size(const char *pathname) {
     if (fstat(fd, &st) == -1) {
         free(scm);
         close(fd);
+        TRACE("fstat failed");
         return NULL;
     }
 
     if (!S_ISREG(st.st_mode)) {
         free(scm);
         close(fd);
+        TRACE("not a regular file");
         return NULL;
     }
 
@@ -92,6 +95,7 @@ struct scm *scm_open(const char *pathname, int truncate) {
     if (sbrk((long) scm->size.capacity) == (void *) -1) {
         close(scm->fd);
         free(scm);
+        TRACE("sbrk failed");
         return NULL;
     }
 
@@ -99,6 +103,7 @@ struct scm *scm_open(const char *pathname, int truncate) {
                           scm->fd, 0)) == MAP_FAILED) {
         close(scm->fd);
         free(scm);
+        TRACE("mmap failed");
         return NULL;
     }
 
@@ -106,6 +111,7 @@ struct scm *scm_open(const char *pathname, int truncate) {
         if (ftruncate(scm->fd, (long) scm->size.capacity) == -1) {
             close(scm->fd);
             free(scm);
+            TRACE("ftruncate failed");
             return NULL;
         }
         scm->size.utilized = 0;
@@ -119,9 +125,15 @@ struct scm *scm_open(const char *pathname, int truncate) {
 void scm_close(struct scm *scm) {
     assert(scm);
 
-    msync(scm->addr, scm->size.capacity, MS_SYNC);
-    munmap(scm->addr, scm->size.capacity);
-    close(scm->fd);
+    if (msync(scm->addr, scm->size.capacity, MS_SYNC) == -1) {
+        TRACE("msync failed");
+    }
+    if (munmap(scm->addr, scm->size.capacity) == -1) {
+        TRACE("munmap failed");
+    }
+    if (close(scm->fd) == -1) {
+        TRACE("close failed");
+    }
 
     memset(scm, 0, sizeof(struct scm));
     FREE(scm);
@@ -167,8 +179,16 @@ void set_utilized(struct scm *scm, void *p, short increment) {
 }
 
 void *scm_malloc(struct scm *scm, size_t n) {
-    void *p = base_addr(scm);
-    void *end = (char *) scm->addr + scm->size.capacity;
+    void *p;
+    void *end;
+
+    if (n == 0) {
+        TRACE("n is zero");
+        return NULL;
+    }
+
+    p = base_addr(scm);
+    end = (char *) scm->addr + scm->size.capacity;
 
     while (p < end) {
         if (block_bit(p) == 0) {
@@ -198,9 +218,15 @@ void *scm_malloc(struct scm *scm, size_t n) {
 }
 
 char *scm_strdup(struct scm *scm, const char *s) {
-    size_t n = strlen(s) + 1;
+    size_t n;
     char *p;
 
+    if (!s) {
+        TRACE("s is NULL");
+        return NULL;
+    }
+
+    n = strlen(s) + 1;
     if (!(p = scm_malloc(scm, n))) {
         TRACE(0);
         return NULL;
